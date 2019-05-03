@@ -22,11 +22,11 @@ def conv3x3(in_planes, out_planes, stride=1):
 def conv_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
-        init.xavier_uniform(m.weight, gain=np.sqrt(2))
-        init.constant(m.bias, 0)
+        init.xavier_uniform_(m.weight, gain=np.sqrt(2))
+        init.constant_(m.bias, 0)
     elif classname.find('BatchNorm') != -1:
-        init.constant(m.weight, 1)
-        init.constant(m.bias, 0)
+        init.constant_(m.weight, 1)
+        init.constant_(m.bias, 0)
 
 
 class AAWideBasic(nn.Module):
@@ -75,6 +75,10 @@ class AAWideResNet(nn.Module):
                                        aa_k=aa_k, aa_v=aa_v, Nh=Nh, fh=fh // 2, fw=fw // 2)
         self.bn1 = nn.BatchNorm2d(n_stages[3], momentum=0.9)
         self.linear = nn.Linear(n_stages[3], num_classes)
+
+        # not sure about the init func for the AA-Wide-ResNet, maybe this will work
+        for m in self.modules():
+            conv_init(m)
 
     def _wide_layer(self, block, planes, num_blocks, dropout_rate, stride, aa_k, aa_v, Nh, fh, fw):
         strides = [stride] + [1] * (num_blocks - 1)

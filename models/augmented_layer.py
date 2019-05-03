@@ -141,7 +141,7 @@ class AugmentedLayer(nn.Module):
 
 if __name__ == '__main__':
     img_data = torch.randn(16, 64, 28, 30)
-    augmented_conv2d = AugmentedLayer(in_channels=64, out_channels=20, kernel_size=3, padding=1, dk=40, dv=4, Nh=4,
-                                      relative=True, fh=28, fw=30)
+    augmented_conv2d = AugmentedLayer(in_channels=64, out_channels=20, kernel_size=3, padding=1,
+                                      dk=40, dv=4, Nh=4, relative=True, fh=28, fw=30)
     output = augmented_conv2d(img_data)
     print(output.size())

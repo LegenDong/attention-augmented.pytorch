@@ -39,9 +39,8 @@ def prepare_device():
     return device, list_ids
 
 
-def adjust_learning_rate(optimizer, epoch, args):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.learning_rate * (0.1 ** (epoch // 30))
+def adjust_learning_rate(optimizer, epoch_idx, warm_up_epochs, batch_size, learning_rate):
+    lr = learning_rate * (epoch_idx + 1) / warm_up_epochs * batch_size / 256
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
@@ -115,7 +114,7 @@ def run_test(model, test_loader, device):
     total_top1 = .0
     total_top5 = .0
     with torch.no_grad():
-        for batch_idx, (data, target) in tqdm(enumerate(test_loader)):
+        for batch_idx, (data, target) in enumerate(tqdm(test_loader, desc='Test Model')):
             data, target = data.to(device), target.to(device)
             output = model(data)
             total_top1 += top1_func(output, target)
@@ -134,11 +133,12 @@ def main(args):
     train_loader = Cifar100DataLoader(args.data_root, args.batch_size, shuffle=True, num_workers=4, training=True)
     test_loader = Cifar100DataLoader(args.data_root, args.batch_size * 3, shuffle=True, num_workers=4, training=False)
 
-    train_log_step = len(train_loader) // 100 if len(train_loader) > 100 else 1
+    train_log_step = len(train_loader) // 10 if len(train_loader) > 10 else 1
+    warm_up_epochs = int(0.05 * args.epochs)
 
     model = AAWideResNet(args.depth, args.widen_factor, args.dropout, args.num_classes)
     optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, weight_decay=5e-4, momentum=0.9)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs - warm_up_epochs)
 
     loss_func = torch.nn.CrossEntropyLoss()
     device, device_ids = prepare_device()
@@ -147,8 +147,11 @@ def main(args):
         model = torch.nn.DataParallel(model, device_ids=device_ids)
 
     max_test_acc = .0
-    for epoch_idx in range(200):
-        lr_scheduler.step()
+    for epoch_idx in range(args.epochs):
+        if epoch_idx < warm_up_epochs:
+            adjust_learning_rate(optimizer, epoch_idx, warm_up_epochs, args.batch_size, args.learning_rate)
+        else:
+            lr_scheduler.step()
 
         train_log = run_train(epoch_idx, model, train_loader, optimizer, loss_func, device, train_log_step)
         for key, value in sorted(train_log.items(), key=lambda item: item[0]):
@@ -168,6 +171,16 @@ def main(args):
             torch.save(state, os.path.join(args.save_dir, 'best_model.pth'))
             max_test_acc = test_acc
 
+        local_logs = train_log.copy()
+        local_logs.update(test_log)
+        with open(os.path.join(args.save_dir, 'logs.txt'), 'a', encoding='utf-8') as f:
+            if epoch_idx == 0:
+                log_str = '\t'.join([str(key) for key, _ in sorted(local_logs.items(), key=lambda item: item[0])])
+                f.write(log_str + '\n')
+
+            log_str = ' '.join([str(value) for _, value in sorted(local_logs.items(), key=lambda item: item[0])])
+            f.write(log_str + '\n')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Template')
@@ -175,14 +188,23 @@ if __name__ == '__main__':
                         help='path to load data (default: ./data)')
     parser.add_argument('--save_dir', default='./checkpoints', type=str,
                         help='path to save model (default: ./checkpoints)')
-    parser.add_argument('--device', default=None, type=str, help='indices of GPUs to enable (default: all)')
-    parser.add_argument('--num_classes', default=100, type=int, help='number of classes (default: 100)')
-    parser.add_argument('--batch_size', default=64, type=int, help='dim of feature (default: 4096)')
-    parser.add_argument('--learning_rate', type=float, default=0.1,
-                        help="learning rate for model (default: 0.1)")
-    parser.add_argument('--depth', default=28, type=int, help='depth of model')
-    parser.add_argument('--widen_factor', default=10, type=int, help='width of model')
-    parser.add_argument('--dropout', default=0.3, type=float, help='dropout_rate')
+    parser.add_argument('--device', default=None, type=str,
+                        help='indices of GPUs to enable (default: all)')
+    parser.add_argument('--num_classes', default=100, type=int,
+                        help='number of classes (default: 100)')
+    parser.add_argument('--batch_size', default=64, type=int,
+                        help='batch size for training, three times in test (default: 64)')
+    parser.add_argument('--learning_rate', type=float, default=0.2,
+                        help="learning rate for model (default: 0.2)")
+    parser.add_argument('--depth', default=28, type=int,
+                        help='depth of model (default: 28)')
+    parser.add_argument('--widen_factor', default=10, type=int,
+                        help='width of model (default: 10)')
+    parser.add_argument('--dropout', default=0.3, type=float,
+                        help='dropout rate (default: 0.3)')
+    parser.add_argument('--epochs', default=200, type=int,
+                        help='training epoch num (default: 200)')
+
     args = parser.parse_args()
 
     if args.device:

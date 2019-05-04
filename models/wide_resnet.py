@@ -87,7 +87,10 @@ class WideResNet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = WideResNet(28, 10, 0.3, 10)
+    model = WideResNet(28, 10, 0.3, 100)
     img_data = torch.randn(10, 3, 32, 32)
     y = model(img_data)
     print(y.size())
+
+    params = sum([np.prod(p.size()) for p in model.parameters()])
+    print('the sum of parameters: {:.1f}M'.format(params / 1e6))

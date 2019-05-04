@@ -32,10 +32,20 @@ def conv_init(m):
 class AAWideBasic(nn.Module):
     def __init__(self, in_planes, planes, dropout_rate, stride=1, k=0.2, v=0.1, Nh=8, fh=32, fw=32):
         super(AAWideBasic, self).__init__()
+        '''
+        in paper: a minimum of 20 dimensions per head for the keys
+        the dimensions of keys for heads depends on dk
+        without: the sum of parameters is 35.8M
+        with:    the sum of parameters is 36.3M
+        seems right, not sure
+        '''
+
+        dk = 20 * Nh if int(k * planes) < 20 * Nh else int(k * planes)
+        dv = int(v * planes)
 
         self.bn1 = nn.BatchNorm2d(in_planes)
         self.conv1 = AugmentedLayer(in_planes, planes, kernel_size=3, padding=1,
-                                    dk=int(k * planes), dv=int(v * planes), Nh=Nh, relative=True, fh=fh, fw=fw)
+                                    dk=dk, dv=dv, Nh=Nh, relative=True, fh=fh, fw=fw)
         self.dropout = nn.Dropout(p=dropout_rate)
         self.bn2 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=True)
@@ -108,7 +118,10 @@ class AAWideResNet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = AAWideResNet(28, 10, 0.3, 10)
+    model = AAWideResNet(28, 10, 0.3, 100)
     img_data = torch.randn(1, 3, 32, 32)
     y = model(img_data)
     print(y.size())
+
+    params = sum([np.prod(p.size()) for p in model.parameters()])
+    print('the sum of parameters: {:.1f}M'.format(params / 1e6))

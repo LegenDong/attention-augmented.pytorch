@@ -111,6 +111,7 @@ def run_train(epoch_idx, model, train_loader, optimizer, loss_func, device, log_
 
 def run_test(model, test_loader, device):
     model.eval()
+
     total_top1 = .0
     total_top5 = .0
     with torch.no_grad():
@@ -137,7 +138,8 @@ def main(args):
     warm_up_epochs = int(0.05 * args.epochs)
 
     model = AAWideResNet(args.depth, args.widen_factor, args.dropout, args.num_classes)
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, weight_decay=5e-4, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate * args.batch_size / 256,
+                                weight_decay=5e-4, momentum=0.9)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs - warm_up_epochs)
 
     loss_func = torch.nn.CrossEntropyLoss()
